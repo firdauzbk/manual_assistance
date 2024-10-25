@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'
+app.secret_key = 'AK7d09IIed'
 
 # Configure upload folder
 UPLOAD_FOLDER = Path('uploads')
