@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Assistant</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .upload-section {
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .chat-section {
+            display: none;
+        }
+
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+
+        .assistant-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+
+        .input-section {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #1976d2;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .error-message {
+            color: red;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #ffebee;
+            border-radius: 4px;
+        }
+        .system-message {
+            color: #666;
+            font-style: italic;
+            background-color: #f5f5f5;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Manual Assistant</h1>
+        
+        <div class="upload-section" id="uploadSection">
+            <h2>Upload Manual</h2>
+            <input type="file" id="manualFile" accept=".pdf" style="display: none;">
+            <button onclick="document.getElementById('manualFile').click()">Choose PDF</button>
+            <p>Or drag and drop a PDF file here</p>
+            <div class="loading" id="uploadLoading">Uploading and processing manual...</div>
+            <div id="uploadError" class="error-message" style="display: none;"></div>
+        </div>
+
+        <div class="chat-section" id="chatSection">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="input-section">
+                <input type="text" id="questionInput" placeholder="Ask a question about the manual...">
+                <button onclick="askQuestion()" id="sendButton">Send</button>
+            </div>
+            <div class="loading" id="questionLoading">Processing your question...</div>
+            <div id="questionError" class="error-message" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Check session status periodically
+        async function checkSession() {
+            try {
+                const response = await axios.get('/check_session');
+                if (response.data.status === 'inactive') {
+                    document.getElementById('uploadSection').style.display = 'block';
+                    document.getElementById('chatSection').style.display = 'none';
+                    addMessage('system', 'Session expired. Please upload the manual again.');
+                }
+            } catch (error) {
+                console.error('Session check failed:', error);
+            }
+        }
+
+        setInterval(checkSession, 30000); // Check every 30 seconds
+
+        // Handle file upload via drag and drop
+        const uploadSection = document.getElementById('uploadSection');
+        
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.style.borderColor = '#2196f3';
+        });
+
+        uploadSection.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadSection.style.borderColor = '#ccc';
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.style.borderColor = '#ccc';
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFileUpload(file);
+            } else {
+                showError('uploadError', 'Please upload a PDF file.');
+            }
+        });
+
+        document.getElementById('manualFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileUpload(file);
+            }
+        });
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        async function handleFileUpload(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            document.getElementById('uploadLoading').style.display = 'block';
+            document.getElementById('uploadError').style.display = 'none';
+
+            try {
+                const response = await axios.post('/upload', formData);
+                document.getElementById('uploadSection').style.display = 'none';
+                document.getElementById('chatSection').style.display = 'block';
+                addMessage('system', 'Manual uploaded successfully! You can now ask questions.');
+            } catch (error) {
+                showError('uploadError', 'Error uploading file: ' + (error.response?.data?.error || error.message));
+            } finally {
+                document.getElementById('uploadLoading').style.display = 'none';
+            }
+        }
+
+        async function askQuestion() {
+            const input = document.getElementById('questionInput');
+            const question = input.value.trim();
+            
+            if (!question) return;
+
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            
+            addMessage('user', question);
+            input.value = '';
+            
+            document.getElementById('questionLoading').style.display = 'block';
+            document.getElementById('questionError').style.display = 'none';
+
+            try {
+                const response = await axios.post('/ask', { question });
+                if (response.data.answer) {
+                    addMessage('assistant', response.data.answer);
+                } else {
+                    showError('questionError', 'Received empty response from server');
+                }
+            } catch (error) {
+                const errorMessage = error.response?.data?.error || error.message;
+                showError('questionError', 'Error: ' + errorMessage);
+                addMessage('system', 'Failed to get answer: ' + errorMessage);
+            } finally {
+                document.getElementById('questionLoading').style.display = 'none';
+                sendButton.disabled = false;
+            }
+        }
+
+        function addMessage(type, content) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            messageDiv.textContent = content;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        document.getElementById('questionInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                askQuestion();
+            }
+        });
+    </script>
+</body>
+</html>
